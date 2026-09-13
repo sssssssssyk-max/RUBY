@@ -4,6 +4,7 @@ import { initCardWriter, startSession, endSession, getState as getCwState } from
 import { ensureOrb } from './src/orb.js';
 import { initSettingsDrawer } from './src/settings.js';
 import { openPanel } from './src/panel.js';
+import { isTauriTavern, waitForHostReady } from './src/host.js';
 
 let commandRegistered = false;
 
@@ -125,24 +126,27 @@ function registerRubyCommand() {
     }
 }
 
-function bootstrap() {
-    if (!window.SillyTavern?.getContext) {
-        warn('SillyTavern global not available yet');
-        setTimeout(bootstrap, 1000);
+async function bootstrap() {
+    const ready = await waitForHostReady();
+    if (!ready) {
+        warn('host context did not become ready in time; retrying');
+        setTimeout(() => bootstrap().catch((e) => warn('bootstrap retry failed:', e)), 1000);
         return;
     }
+
     registerRubyCommand();
     initEngine();
     initCardWriter();
     ensureOrb();
     initSettingsDrawer();
-    log('RUBY Analyzer extension loaded (independent edition)');
+    log(`RUBY Analyzer TT extension loaded (${isTauriTavern() ? 'TauriTavern' : 'SillyTavern'} host)`);
 }
 
-bootstrap();
+bootstrap().catch((e) => warn('bootstrap failed:', e));
 
 window.addEventListener('error', (e) => {
-    if (String(e?.filename || '').includes('ruby-analyzer')) {
+    const source = String(e?.filename || '').toLowerCase();
+    if (source.includes('ruby-analyzer') || source.includes('/ruby/')) {
         warn('uncaught error:', e.message);
     }
 });

@@ -1,12 +1,12 @@
 {
-    "display_name": "RUBY Analyzer",
+    "display_name": "RUBY Analyzer TT",
     "loading_order": 20,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
-    "author": "RUBY Project",
-    "version": "1.6.0",
-    "homePage": "",
+    "author": "sssssssssyk-max",
+    "version": "1.7.0",
+    "homePage": "https://github.com/sssssssssyk-max/RUBY",
     "auto_update": true
 }

@@ -1,4 +1,5 @@
-import { ctx, log, h } from './env.js';
+import { ctx, log, warn, h } from './env.js';
+import { applyHostSurface } from './host.js';
 import * as config from './config.js';
 import * as scheduler from './scheduler.js';
 import * as jailbreak from './jailbreak.js';
@@ -129,29 +130,41 @@ function closePanel() {
     if (root) root.style.display = 'none';
 }
 
+function safeRender(label, render, fallbackId) {
+    try {
+        render();
+    } catch (e) {
+        warn(`panel render failed: ${label}`, e);
+        const fallback = fallbackId ? $(fallbackId) : null;
+        if (fallback) {
+            fallback.innerHTML = `<span class="status-err">${h(label)}渲染失败：${h(e?.message || e)}</span>`;
+        }
+    }
+}
+
 function refreshAll() {
     const { data, layer, source } = config.resolveConfig();
     if (!ui.editingPresetId || !data.presets.some((p) => p.id === ui.editingPresetId)) {
         ui.editingPresetId = data.activePresetId || data.presets[0]?.id;
     }
-    renderStatus(layer, source);
-    renderPresetDisplay(data, layer);
-    renderManualButtons(data, layer);
-    renderSchedule(data, layer);
+    safeRender('系统状态', () => renderStatus(layer, source), 'ra_status');
+    safeRender('当前方案', () => renderPresetDisplay(data, layer), 'ra_current_preset');
+    safeRender('手动执行分析', () => renderManualButtons(data, layer), 'ra_manual_buttons');
+    safeRender('任务触发时间表', () => renderSchedule(data, layer), 'ra_schedule');
     checkEntryStatus(data);
-    renderPresetList(data);
-    loadApiTab(data);
+    safeRender('配置方案列表', () => renderPresetList(data), 'ra_preset_list');
+    safeRender('API 设置', () => loadApiTab(data));
     ui.jailbreakItems = jailbreak.getJailbreakItems(data);
-    renderJailbreakItems();
+    safeRender('破限设置', () => renderJailbreakItems());
     ui.tags = [...(data.customContentTags || [])];
-    renderTagsList();
-    renderSummaryProviders(data);
-    renderSchemeTabs();
-    loadSchemeToUI(ui.editingPresetId);
+    safeRender('正文标签', () => renderTagsList());
+    safeRender('总结接口', () => renderSummaryProviders(data));
+    safeRender('方案页签', () => renderSchemeTabs());
+    safeRender('方案编辑器', () => loadSchemeToUI(ui.editingPresetId));
     ui.refs = getEditingPreset(data).referencePool ? [...getEditingPreset(data).referencePool] : [];
-    renderRefPool();
-    renderBindingTab(layer);
-    renderPresetSummary();
+    safeRender('参考条目池', () => renderRefPool());
+    safeRender('角色绑定', () => renderBindingTab(layer), 'ra_binding_status');
+    safeRender('方案摘要', () => renderPresetSummary(), 'ra_preset_summary');
 }
 
 function buildPanel() {
@@ -162,6 +175,8 @@ function buildPanel() {
     root.id = PANEL_ID;
     root.innerHTML = buildShellHtml();
     document.body.appendChild(root);
+    applyHostSurface(root, 'fullscreen-window');
+    applyHostSurface(root.querySelector('.ra-mask'), 'backdrop');
     panelBuilt = true;
 
     wireTabs(root);
@@ -185,8 +200,8 @@ function buildShellHtml() {
     <div class="card">
         <div class="title-bar">
             <div>
-                <h1>◆ RUBY 角色分析系统 ◆</h1>
-                <div class="subtitle">Ruby Universal Bot Yield - 独立分析扩展</div>
+                <h1>◆ RUBY Analyzer TT ◆</h1>
+                <div class="subtitle">Ruby Universal Bot Yield - TauriTavern / SillyTavern 独立分析扩展</div>
             </div>
             <button id="ra_close" class="close-btn">✕ 关闭</button>
         </div>
@@ -892,41 +907,100 @@ function renderManualButtons(data, layer) {
     const preset = config.getActivePreset(data);
     const identity = config.getCharacterIdentity();
 
+    el.style.setProperty('display', 'flex', 'important');
+    el.style.setProperty('flex-wrap', 'wrap', 'important');
+    el.style.setProperty('visibility', 'visible', 'important');
+    el.style.setProperty('opacity', '1', 'important');
+    el.replaceChildren();
+
+    const renderMessage = (text, className = '') => {
+        const message = document.createElement('span');
+        message.className = className;
+        message.textContent = text;
+        message.style.setProperty('display', 'block', 'important');
+        message.style.setProperty('visibility', 'visible', 'important');
+        message.style.setProperty('opacity', '1', 'important');
+        message.style.setProperty('color', '#1a1a1a', 'important');
+        message.style.setProperty('font-size', '14px', 'important');
+        el.appendChild(message);
+    };
+
     if (!identity) {
-        el.innerHTML = '<span style="color:#1a1a1a;font-size:14px;">请先打开角色对话</span>';
+        renderMessage('请先打开角色对话');
         return;
     }
     if (layer !== 'character') {
-        el.innerHTML = '<span class="status-warn">⚠ 配置未绑定角色卡——到创作者版面"角色绑定"页绑定后执行（保存修改也会自动绑定到当前卡）</span>';
+        renderMessage('⚠ 配置未绑定角色卡——到创作者版面"角色绑定"页绑定后执行（保存修改也会自动绑定到当前卡）', 'status-warn');
         return;
     }
 
-    const buttons = [];
+    const actions = [];
     if (preset.startupTask?.enabled && scheduler.taskMatchesCharacter(preset.startupTask, identity)) {
-        buttons.push(`<button class="btn green" data-run="startup">${h(preset.startupTask.displayName || '开局分析')}</button>`);
+        actions.push({
+            kind: 'startup',
+            label: preset.startupTask.displayName || '开局分析',
+            className: 'btn green',
+        });
     }
     for (const task of preset.tasks || []) {
         if (task.enabled && scheduler.taskMatchesCharacter(task, identity)) {
-            buttons.push(`<button class="btn green" data-run="task" data-id="${task.id}">${h(task.displayName || `任务#${task.id}`)}</button>`);
+            actions.push({
+                kind: 'task',
+                id: task.id,
+                label: task.displayName || `任务#${task.id}`,
+                className: 'btn green',
+            });
         }
     }
-    if (buttons.length > 1) {
-        buttons.push(`<button class="btn blue" data-run="all">▶ 全部执行</button>`);
+    if (actions.length > 1) {
+        actions.push({
+            kind: 'all',
+            label: '▶ 全部执行',
+            className: 'btn blue',
+        });
     }
 
-    el.innerHTML = buttons.join('') || '<span style="color:#1a1a1a;font-size:14px;">暂无启用的任务</span>';
-    el.querySelectorAll('[data-run]').forEach((btn) => {
+    if (actions.length === 0) {
+        renderMessage('暂无启用的任务');
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (const action of actions) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `ra-manual-run ${action.className}`;
+        btn.dataset.run = action.kind;
+        if (action.id !== undefined) btn.dataset.id = String(action.id);
+        btn.textContent = action.label;
+        btn.setAttribute('aria-label', action.label);
+
+        // TauriTavern 可能叠加主题/宿主样式；关键显示属性用内联 important 固定。
+        btn.style.setProperty('display', 'inline-flex', 'important');
+        btn.style.setProperty('align-items', 'center', 'important');
+        btn.style.setProperty('justify-content', 'center', 'important');
+        btn.style.setProperty('width', 'auto', 'important');
+        btn.style.setProperty('height', 'auto', 'important');
+        btn.style.setProperty('min-height', '36px', 'important');
+        btn.style.setProperty('visibility', 'visible', 'important');
+        btn.style.setProperty('opacity', '1', 'important');
+        btn.style.setProperty('pointer-events', 'auto', 'important');
+        btn.style.setProperty('background', action.kind === 'all' ? '#1E4B8E' : '#2C5530', 'important');
+        btn.style.setProperty('color', '#fff', 'important');
+        btn.style.setProperty('border', `1px solid ${action.kind === 'all' ? '#13325E' : '#1A3A1E'}`, 'important');
+
         on(btn, 'click', async () => {
-            const kind = btn.dataset.run;
-            const id = parseInt(btn.dataset.id, 10);
             closePanel();
             try {
-                await engine.forceRun(kind, id);
+                await engine.forceRun(action.kind, action.id);
             } catch (e) {
                 window.toastr?.error?.(e.message || '执行失败', '', { timeOut: 6000 });
             }
         });
-    });
+        fragment.appendChild(btn);
+    }
+    el.appendChild(fragment);
+    el.dataset.buttonCount = String(actions.length);
 }
 
 function renderSchedule(data, layer) {

@@ -1,8 +1,8 @@
-# RUBY Analyzer（独立版）
+# RUBY Analyzer TT（TauriTavern / SillyTavern 独立版）
 
-SillyTavern 1.16+ 的独立第三方扩展。基于对话楼层周期性调用 AI 执行角色分析任务，将结果写入聊天世界书。
+TauriTavern 与 SillyTavern 1.16+ 的独立第三方扩展。基于对话楼层周期性调用 AI 执行角色分析任务，将结果写入聊天世界书。
 
-完全脱离宿主插件运行，仅使用 SillyTavern 官方扩展 API（`SillyTavern.getContext()`）、原生 STscript 命令与原生事件系统。
+完全脱离宿主插件运行，仅使用酒馆兼容扩展 API（`SillyTavern.getContext()`）、原生 STscript 命令与原生事件系统。仓库地址和扩展管理器安装方式保持原样，显示名称与版本升级为 **RUBY Analyzer TT v1.7.0**。
 
 ## 功能
 
@@ -22,17 +22,39 @@ SillyTavern 1.16+ 的独立第三方扩展。基于对话楼层周期性调用 A
 
 ### 方式一：扩展管理器安装（推荐）
 
-把本目录推送到 Git 仓库后，在 SillyTavern → 扩展 → 安装扩展 中填入仓库地址安装。
+在 TauriTavern 或 SillyTavern 的“扩展 → 安装扩展”中填入同一个 Git 仓库地址：
+
+```text
+https://github.com/sssssssssyk-max/RUBY
+```
+
+安装方式与原版相同，仍按仓库根目录的 `manifest.json` 自动加载，原有的 `auto_update` 更新通道保持启用。
 
 ### 方式二：手动放置
 
-将 `ruby-analyzer` 文件夹复制到：
+将仓库文件夹复制到对应目录。
 
+TauriTavern：
+
+```text
+TauriTavern/data/default-user/extensions/RUBY
 ```
-SillyTavern/public/scripts/extensions/third-party/ruby-analyzer
+
+SillyTavern：
+
+```text
+SillyTavern/public/scripts/extensions/third-party/RUBY
 ```
 
 刷新页面即自动加载。
+
+## TauriTavern 适配（v1.7.0）
+
+- 启动时等待 TauriTavern `window.__TAURITAVERN__.ready`（并兼容 `__TAURITAVERN_MAIN_READY__`）及 SillyTavern 上下文就绪；超时自动重试，避免第三方扩展延迟激活时静默初始化失败
+- 主面板与遮罩显式声明 TauriTavern `fullscreen-window` / `backdrop` surface，使用 `--tt-inset-*`、`--tt-viewport-bottom-inset` 处理移动端安全区和底部可达性
+- “手动执行分析”改为逐节点渲染，并对容器和按钮固定关键显示属性；即使宿主主题或扩展样式以 `!important` 隐藏按钮，仍能正常显示
+- 面板各区块独立容错：单个区块渲染异常不会再清空整张主面板，日志会指出具体失败分区
+- 保留存储命名空间 `RubyAnalyzer` 与原有配置结构，旧角色卡配置、API 设置和模板无需迁移
 
 ## API 渠道
 
@@ -86,7 +108,7 @@ RUBY 的任务配置**只随角色卡存在**，保存于角色卡 JSON 的 `dat
 ## 项目结构
 
 ```
-ruby-analyzer/
+RUBY/
 ├── manifest.json      扩展清单（auto_update 已启用）
 ├── index.js           入口：初始化、/ruby 命令注册
 ├── style.css          悬浮球 + 面板样式
@@ -101,6 +123,7 @@ ruby-analyzer/
     ├── engine.js      事件编排、补齐循环、分析管线
     ├── cardwriter.js  写卡模式引擎（步骤注入/完成检测/草稿写入/自动切换）
     ├── cardwriter-data.js  写卡步骤数据（内置规则/人设/附录/步骤指令，tools 脚本生成）
+    ├── host.js         TauriTavern / SillyTavern 宿主就绪与 surface 适配
     ├── orb.js         可拖动悬浮球（头像 + 状态徽章 + 写卡步骤气泡）
     ├── orb-avatar.js  悬浮球头像资源（内嵌 data URI，无外部请求）
     ├── settings.js    酒馆扩展设置栏抽屉（悬浮球开关）

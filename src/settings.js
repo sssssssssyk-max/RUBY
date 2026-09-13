@@ -19,7 +19,7 @@ export function initSettingsDrawer() {
     drawer.innerHTML = `
         <div class="inline-drawer">
             <div class="inline-drawer-toggle inline-drawer-header">
-                <b>RUBY 分析器</b>
+                <b>RUBY Analyzer TT</b>
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content">
