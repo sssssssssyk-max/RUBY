@@ -277,8 +277,58 @@ export async function callModel({ apiCfg, genParams, messages, taskLabel }) {
     }
 }
 
-export async function fetchModelList(baseUrl, apiKey) {
+function parseAdditionalHeaders(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return {};
+
+    let parsed = null;
+    const yaml = ctx()?.libs?.yaml;
+    if (typeof yaml?.parse === 'function') {
+        try {
+            parsed = yaml.parse(text);
+        } catch {
+            parsed = null;
+        }
+    }
+
+    if (parsed === null) {
+        parsed = {};
+        for (const [index, rawLine] of text.split(/\r?\n/).entries()) {
+            const line = rawLine.trim();
+            if (!line || line.startsWith('#')) continue;
+            const match = line.match(/^([^:#][^:]*):(?:\s*(.*))?$/);
+            if (!match) {
+                throw new Error(`包含请求头第 ${index + 1} 行不是有效的 YAML 键值对`);
+            }
+            let value = String(match[2] ?? '').trim();
+            if (value.startsWith('"') && value.endsWith('"')) {
+                try {
+                    value = JSON.parse(value);
+                } catch {
+                    throw new Error(`包含请求头第 ${index + 1} 行不是有效的双引号字符串`);
+                }
+            } else if (value.startsWith("'") && value.endsWith("'")) {
+                value = value.slice(1, -1).replace(/''/g, "'");
+            } else {
+                value = value.replace(/\s+#.*$/, '').trim();
+            }
+            parsed[match[1].trim()] = value;
+        }
+    }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('包含请求头必须是 YAML 对象');
+    }
+    return Object.fromEntries(
+        Object.entries(parsed)
+            .map(([key, value]) => [String(key).trim(), value == null ? '' : String(value)])
+            .filter(([key]) => key),
+    );
+}
+
+export async function fetchModelList(baseUrl, apiKey, includeHeaders = '') {
     const c = ctx();
+    const headerText = String(includeHeaders || '').trim();
     const cleanBase = String(baseUrl || '').trim()
         .replace(/\/+$/, '')
         .replace(/\/(?:v\d+|beta)\/chat\/completions$/i, '')
@@ -296,6 +346,7 @@ export async function fetchModelList(baseUrl, apiKey) {
                     chat_completion_source: 'openai',
                     reverse_proxy: cleanBase,
                     proxy_password: apiKey || '',
+                    custom_include_headers: headerText,
                 }),
             });
             if (res.ok) {
@@ -312,11 +363,16 @@ export async function fetchModelList(baseUrl, apiKey) {
         /\/(v\d+|beta)$/i.test(cleanBase) ? `${cleanBase.replace(/\/(v\d+|beta)$/i, '')}/v1/models` : '',
     ].filter(Boolean))];
 
+    const additionalHeaders = parseAdditionalHeaders(headerText);
     let lastError = '';
     for (const url of candidates) {
         try {
             const res = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${apiKey || ''}`, 'Accept': 'application/json' },
+                headers: {
+                    'Authorization': `Bearer ${apiKey || ''}`,
+                    'Accept': 'application/json',
+                    ...additionalHeaders,
+                },
             });
             if (res.ok) {
                 const data = await res.json();
