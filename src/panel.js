@@ -5,6 +5,7 @@ import * as scheduler from './scheduler.js';
 import * as jailbreak from './jailbreak.js';
 import * as engine from './engine.js';
 import * as ai from './ai.js';
+import * as nativeApi from './native-api.js';
 import * as worldbook from './worldbook.js';
 import * as cardwriter from './cardwriter.js';
 import { countAiReplies, getLittleWhiteBoxSummary, getShujukuBoundary, getYuzukiStatus, ordinalForIndex } from './reader.js';
@@ -335,6 +336,29 @@ function buildShellHtml() {
                     <div class="form-section">
                         <div class="form-header red">■ 生成参数</div>
                         <div class="form-body">
+                            <details id="ra_api_additional_panel" class="native-param-panel">
+                                <summary>
+                                    <span>附加参数</span>
+                                    <span id="ra_api_additional_source" class="native-param-source"></span>
+                                </summary>
+                                <div class="native-param-body">
+                                    <div class="tip" style="margin-top:0;margin-bottom:12px;">
+                                        与酒馆原生 API 的“附加参数”共用同一份设置，按当前聊天补全来源分别保存。主 API 由酒馆自动应用；自定义端点由 RUBY 在请求中携带。内容使用 YAML，留空即不添加或排除。
+                                    </div>
+                                    <div class="additional-param-field">
+                                        <h4>包含主体参数</h4>
+                                        <textarea id="ra_api_include_body" spellcheck="false" placeholder="包含在 Chat Completion 请求主体中的参数（YAML 对象）&#10;&#10;示例：&#10;top_k: 20&#10;repetition_penalty: 1.1"></textarea>
+                                    </div>
+                                    <div class="additional-param-field">
+                                        <h4>排除主体参数</h4>
+                                        <textarea id="ra_api_exclude_body" spellcheck="false" placeholder="从 Chat Completion 请求主体中排除的参数（YAML 数组）&#10;&#10;示例：&#10;- frequency_penalty&#10;- presence_penalty"></textarea>
+                                    </div>
+                                    <div class="additional-param-field">
+                                        <h4>包含请求头</h4>
+                                        <textarea id="ra_api_include_headers" spellcheck="false" placeholder="为 Chat Completion 请求添加的自定义请求头（YAML 对象）&#10;&#10;示例：&#10;CustomHeader: custom-value&#10;AnotherHeader: custom-value"></textarea>
+                                    </div>
+                                </div>
+                            </details>
                             <div class="tip" style="margin-top:0;margin-bottom:10px;">
                                 💡 <strong>默认不发送任何生成参数</strong>：主API沿用酒馆当前预设的采样设置，自定义端点沿用服务商默认值。<br>
                                 有自定义需求时勾选下方开关；<u>留空的参数依然不会发送</u>。
@@ -363,7 +387,7 @@ function buildShellHtml() {
                         </div>
                     </div>
 
-                    <div class="tip">💡 生成参数随当前配置层（角色卡内嵌/全局暂存）保存；API凭据只保存在本地。</div>
+                    <div class="tip">💡 生成参数随当前配置层（角色卡内嵌/全局暂存）保存；附加参数写回酒馆原生 API 设置；API凭据只保存在本地。</div>
                     <div class="btn-row"><button id="ra_api_save" class="btn red">💾 保存API设置</button></div>
                 </div>
 
@@ -1175,6 +1199,7 @@ function loadApiTab(data) {
     $('ra_gen_pp').value = gen.presence_penalty ?? '';
     $('ra_gen_fp').value = gen.frequency_penalty ?? '';
     $('ra_gen_effort').value = gen.reasoning_effort || '';
+    loadNativeAdditionalParameters();
 
     const genInputs = ['ra_gen_temp', 'ra_gen_top_p', 'ra_gen_top_k', 'ra_gen_pp', 'ra_gen_fp', 'ra_gen_effort'];
     const syncGenEnabled = () => {
@@ -1211,6 +1236,41 @@ function loadApiTab(data) {
     };
 }
 
+function loadNativeAdditionalParameters() {
+    const state = nativeApi.getNativeAdditionalParameters();
+    const source = $('ra_api_additional_source');
+    const fields = [
+        ['ra_api_include_body', 'include_body'],
+        ['ra_api_exclude_body', 'exclude_body'],
+        ['ra_api_include_headers', 'include_headers'],
+    ];
+
+    if (source) {
+        source.textContent = state.supported
+            ? `当前来源：${state.sourceLabel}`
+            : state.sourceLabel;
+    }
+    for (const [id, key] of fields) {
+        const input = $(id);
+        if (!input) continue;
+        input.value = state[key] || '';
+        input.disabled = !state.supported;
+    }
+}
+
+function saveNativeAdditionalParametersFromUi() {
+    const state = nativeApi.saveNativeAdditionalParameters({
+        include_body: $('ra_api_include_body')?.value || '',
+        exclude_body: $('ra_api_exclude_body')?.value || '',
+        include_headers: $('ra_api_include_headers')?.value || '',
+    });
+    const source = $('ra_api_additional_source');
+    if (source && state?.supported) {
+        source.textContent = `当前来源：${state.sourceLabel}`;
+    }
+    return state;
+}
+
 function wirePlayerSections() {
     on($('ra_api_connect'), 'click', async () => {
         const btn = $('ra_api_connect');
@@ -1221,7 +1281,8 @@ function wirePlayerSections() {
             if (!key) { window.toastr?.warning?.('请先填写 KEY'); return; }
             btn.disabled = true;
             btn.textContent = '连接中...';
-            const models = await ai.fetchModelList(base, key);
+            const nativeParameters = nativeApi.getNativeAdditionalParameters();
+            const models = await ai.fetchModelList(base, key, nativeParameters.include_headers);
             if (!models.length) { window.toastr?.warning?.('未获取到模型'); return; }
             const modelSelect = $('ra_api_model_select');
             modelSelect.innerHTML = models.map((id) => `<option value="${h(id)}">${h(id)}</option>`).join('');
@@ -1251,6 +1312,7 @@ function wirePlayerSections() {
 
     on($('ra_api_save'), 'click', () => {
         try {
+            saveNativeAdditionalParametersFromUi();
             const providerSel = $('ra_api_provider');
             const modelSelect = $('ra_api_model_select');
             const isCustom = providerSel.value === 'custom';
@@ -1290,6 +1352,17 @@ function wirePlayerSections() {
             window.toastr?.error?.('保存失败: ' + e.message);
         }
     });
+
+    const additionalFields = [
+        ['ra_api_include_body', 'include_body'],
+        ['ra_api_exclude_body', 'exclude_body'],
+        ['ra_api_include_headers', 'include_headers'],
+    ];
+    for (const [id, key] of additionalFields) {
+        on($(id), 'input', () => {
+            nativeApi.saveNativeAdditionalParameters({ [key]: $(id)?.value || '' });
+        });
+    }
 }
 
 function collectJailbreakFromUI() {

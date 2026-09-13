@@ -2,7 +2,7 @@
 
 TauriTavern 与 SillyTavern 1.16+ 的独立第三方扩展。基于对话楼层周期性调用 AI 执行角色分析任务，将结果写入聊天世界书。
 
-完全脱离宿主插件运行，仅使用酒馆兼容扩展 API（`SillyTavern.getContext()`）、原生 STscript 命令与原生事件系统。仓库地址和扩展管理器安装方式保持原样，显示名称与版本升级为 **RUBY Analyzer TT v1.7.0**。
+完全脱离宿主插件运行，仅使用酒馆兼容扩展 API（`SillyTavern.getContext()`）、原生 STscript 命令与原生事件系统。仓库地址和扩展管理器安装方式保持原样，显示名称与版本升级为 **RUBY Analyzer TT v1.8.0**。
 
 ## 功能
 
@@ -14,7 +14,7 @@ TauriTavern 与 SillyTavern 1.16+ 的独立第三方扩展。基于对话楼层�
 - **写卡模式（第三页签）**：内置 Ruby 写卡全流程（Step0 美学思考 → Step8 分析提示词，含可选 Step4 NSFW / Step6.5 交接 / StepX 自检）。规则与人设以深度 0、排序 999 常驻强调注入，步骤指令按当前步骤注入聊天附加世界书；创作者用自己的预设/API 原生对话，RUBY 只监听——检测到每步的 yaml 完成标记后自动把产物写入《ruby写卡初稿》世界书（角色内容按顺序排角色后、世界/NPC/速览排角色前、分析提示词进关闭条目并自动填角色名关键词），并自动切换下一步骤；步骤说明同步在悬浮球旁气泡弹出；进度存聊天元数据，换聊天不串进度
 - **悬浮球 + 完整面板**：可拖动悬浮球（角色头像圆形裁切 + 底部状态徽章：绿√=监听中 / 蓝点脉冲=分析中 / 红×=错误 / 灰点=待机 / 紫✎=写卡会话）一键打开配置面板；酒馆扩展设置栏提供悬浮球显示开关与大小拉条（60px 最大、可逐步缩小），也可用 `/ruby` 命令打开面板
 - **卡片中心配置（无全局任务）**：任务配置通过酒馆官方 `writeExtensionField` API 写入角色卡的 `data.extensions` 字段，**导出/分享角色卡时配置随卡携带**，其他环境导入即自动生效；打开角色卡后导入模板或新建/修改任务会**自动绑定到当前卡**；引擎只执行已绑定角色卡的配置，未打开卡/未绑定时面板提醒绑定（任务级角色限定已移除——配置随卡生效，无需重复指定）
-- **API 安全**：密钥只存于本机扩展设置，绝不进入角色卡 / 世界书 / 导出模板；自定义端点请求经酒馆服务端转发（无 CORS、密钥不暴露前端）
+- **API 安全与原生附加参数**：密钥只存于本机扩展设置，绝不进入角色卡 / 世界书 / 导出模板；自定义端点请求经酒馆服务端转发（无 CORS、密钥不暴露前端）。“生成参数”顶部内置可折叠的“附加参数”，直接编辑酒馆当前聊天补全来源的 `additional_parameters_by_source`
 - **多配置方案 + 模板导入导出**：多套方案随时切换；JSON 模板即插即拔，兼容旧版模板格式
 - **原生更新通道**：manifest 已启用 `auto_update`，通过酒馆扩展管理器自动/手动更新
 
@@ -25,7 +25,7 @@ TauriTavern 与 SillyTavern 1.16+ 的独立第三方扩展。基于对话楼层�
 在 TauriTavern 或 SillyTavern 的“扩展 → 安装扩展”中填入同一个 Git 仓库地址：
 
 ```text
-https://github.com/xm212617-code/RUBY
+https://github.com/sssssssssyk-max/RUBY
 ```
 
 安装方式与原版相同，仍按仓库根目录的 `manifest.json` 自动加载，原有的 `auto_update` 更新通道保持启用。
@@ -48,7 +48,7 @@ SillyTavern/public/scripts/extensions/third-party/RUBY
 
 刷新页面即自动加载。
 
-## TauriTavern 适配（v1.7.0）
+## TauriTavern 适配（v1.8.0）
 
 - 启动时等待 TauriTavern `window.__TAURITAVERN__.ready`（并兼容 `__TAURITAVERN_MAIN_READY__`）及 SillyTavern 上下文就绪；超时自动重试，避免第三方扩展延迟激活时静默初始化失败
 - 主面板与遮罩显式声明 TauriTavern `fullscreen-window` / `backdrop` surface，使用 `--tt-inset-*`、`--tt-viewport-bottom-inset` 处理移动端安全区和底部可达性
@@ -64,6 +64,18 @@ SillyTavern/public/scripts/extensions/third-party/RUBY
 |---|---|---|
 | 酒馆主 API | 原生 `generateRaw`（quiet 调用） | 仅借用酒馆主通道发送：**绕过预设的提示词注入**——主提示词、越狱、角色卡、聊天记录一概不进入上下文，发送的只有 RUBY 自己组装的破限消息与任务提示词（与酒馆自身静默提示词同一机制）；RUBY 生成参数通过官方 `CHAT_COMPLETION_SETTINGS_READY` 事件钩子覆写到本次请求。出站请求与普通生成同源同形 |
 | 自定义 OpenAI 兼容端点 | 原生 `ChatCompletionService`（ST 1.16 官方请求服务） | 酒馆官方为扩展提供的 chat completion 请求服务：同一后端端点、同一负载组装约定、同一 SSE 解析器（`EventSourceStream` + `getStreamingReply`）。地址填到版本段（如 `https://api.deepseek.com/beta`），服务端自动拼接 `/chat/completions`；可一键拉取模型列表 |
+
+### 附加参数
+
+API 页“生成参数”卡片顶部提供默认折叠的“附加参数”面板，字段与酒馆原生 Chat Completion 附加参数一致：
+
+| 界面字段 | 原生设置字段 | 格式 | 作用 |
+|---|---|---|---|
+| 包含主体参数 | `include_body` | YAML 对象 | 将额外参数合并进 Chat Completion 请求主体 |
+| 排除主体参数 | `exclude_body` | YAML 数组 | 从 Chat Completion 请求主体中移除指定参数 |
+| 包含请求头 | `include_headers` | YAML 对象 | 为生成请求和模型列表请求添加自定义请求头 |
+
+三项按酒馆当前 `chat_completion_source`（自定义来源再细分 `custom_api_format`）写入并读取 `chatCompletionSettings.additional_parameters_by_source`，与酒馆原生设置共用同一份数据。主 API 由酒馆请求链路自动应用；RUBY 自定义端点由请求负载直接携带这些原生字段。
 
 ## 斜杠命令
 

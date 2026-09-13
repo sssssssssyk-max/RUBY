@@ -1,5 +1,6 @@
 import { ctx, log, warn } from './env.js';
 import { sanitizeGenParams } from './config.js';
+import { getNativeAdditionalParameters } from './native-api.js';
 
 const REQUEST_TIMEOUT_MS = 600000;
 
@@ -23,6 +24,7 @@ function friendlyError(err) {
 }
 
 function buildGenerationPayload({ apiCfg, genParams, messages }) {
+    const additional = getNativeAdditionalParameters();
     const payload = {
         messages,
         model: apiCfg.model,
@@ -30,6 +32,10 @@ function buildGenerationPayload({ apiCfg, genParams, messages }) {
         reverse_proxy: normalizeBaseUrl(apiCfg.url),
         proxy_password: apiCfg.key || '',
         stream: apiCfg.stream !== false,
+        // 与酒馆当前聊天补全来源共用原生 additional_parameters_by_source。
+        custom_include_body: additional.include_body,
+        custom_exclude_body: additional.exclude_body,
+        custom_include_headers: additional.include_headers,
     };
     // 仅发送玩家显式启用且通过合法性清洗的参数；其余不进入请求体，
     // 由上游使用默认值（杜绝 top_k=0 之类的非法值抵达供应商）
